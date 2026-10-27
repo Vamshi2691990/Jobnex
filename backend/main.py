@@ -181,6 +181,7 @@ settings = get_settings()
 class User(Base):
     """Application user; password_hash is NULL for Google-only accounts."""
     __tablename__ = "users"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -193,6 +194,7 @@ class User(Base):
 class Job(Base):
     """A job posting saved for matching/filtering."""
     __tablename__ = "jobs"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
