@@ -18,7 +18,7 @@ import re
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status 
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -38,10 +38,14 @@ SKILLS = [
     "machine learning", "deep learning", "data analysis", "data visualization",
     "natural language processing", "project management", "javascript", "typescript",
     "node.js", "react", "fastapi", "flask", "django", "python", "sql", "mysql",
-    "postgresql", "mongodb", "html", "css", "docker", "kubernetes", "aws", "azure",
-    "google cloud", "git", "github", "rest api", "linux", "excel", "power bi",
-    "tableau", "pandas", "numpy", "scikit-learn", "java", "c++", "c#", "pytest",
-    "selenium", "terraform", "redis", "communication", "agile", "scrum",
+    "postgresql", "mongodb", "html5", "css3", "html", "css", "docker", "kubernetes",
+    "aws", "azure", "google cloud", "git", "github", "rest api", "graphql", "linux",
+    "excel", "power bi", "tableau", "pandas", "numpy", "scikit-learn", "java", "c++",
+    "c#", "pytest", "selenium", "terraform", "redis", "communication", "agile", "scrum",
+    "spring boot", "next.js", "vue.js", "angular", "tailwind css", "jest", "cypress",
+    "kafka", "gcp", "github actions", "gitlab", "jenkins", "prometheus", "grafana",
+    "figma", "design systems", "user research", "prototyping", "rabbitmq",
+    "cloudformation", "bash", "networking", "zustand", "redux",
 ]
 CERTIFICATIONS = [
     "aws certified solutions architect", "aws certified developer",
@@ -52,7 +56,9 @@ CERTIFICATIONS = [
 ALIASES = {
     "js": "javascript", "node": "node.js", "k8s": "kubernetes",
     "ml": "machine learning", "nlp": "natural language processing",
-    "restful api": "rest api", "amazon web services": "aws",
+    "rest apis": "rest api", "restful apis": "rest api", "restful api": "rest api",
+    "amazon web services": "aws", "google cloud platform": "google cloud",
+    "html5": "html", "css3": "css",
     "microsoft azure": "microsoft azure",
 }
 

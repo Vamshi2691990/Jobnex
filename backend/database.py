@@ -64,6 +64,7 @@ class ResumeAnalyzer(Base):
     analysis_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # Owner of the analysis (users.id). Nullable so rows created before this column existed survive.
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    job_description_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     resume_text: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
     jd_text: Mapped[str] = mapped_column(LONGTEXT, nullable=False)
     created_at: Mapped[object] = mapped_column(
@@ -92,13 +93,18 @@ class ResumeAnalyzer(Base):
 # existing database keeps working without a manual migration. Use Alembic for anything bigger.
 # ---------------------------------------------------------------------------
 COLUMN_PATCHES: dict[str, dict[str, str]] = {
-    "resume_analyzer": {"user_id": "INT NULL"},
+    "resume_analyzer": {
+        "user_id": "INT NULL",
+        "job_description_id": "INT NULL",
+    },
     "jobs": {
         "job_type": "VARCHAR(50) NULL",
         "experience_level": "VARCHAR(30) NULL",
         "skills": "TEXT NULL",
         "certifications": "VARCHAR(200) NULL",
     },
+    "recruiter_jobs": {"is_demo": "BOOLEAN NOT NULL DEFAULT 0"},
+    "recruiter_candidates": {"is_demo": "BOOLEAN NOT NULL DEFAULT 0"},
 }
 
 

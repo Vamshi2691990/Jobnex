@@ -110,8 +110,12 @@
             type: 'button',
             class: isDanger ? 'btn btn-danger-solid' : 'btn',
             async onclick() {
-              if (onConfirm) await onConfirm();
-              close();
+              try {
+                if (onConfirm) await onConfirm();
+                close();
+              } catch (error) {
+                showToast(`Action failed: ${error.message}`, 'error');
+              }
             }
           }, confirmText)
         )
@@ -169,6 +173,16 @@
     return;
   }
 
+  // Role-based route protection placeholder (Recruiter Portal)
+  if (page === 'recruiters') {
+    const userRole = (session && session.role) || 'recruiter';
+    if (userRole !== 'recruiter' && userRole !== 'admin') {
+      showToast('Access restricted: Recruiter role required.', 'error');
+      location.replace('dashboard.html');
+      return;
+    }
+  }
+
   // The stored session only makes the redirect instant. The REAL session is the signed cookie
   // on the server, so confirm it in the background and bounce to login if it has expired.
   if (page !== 'login' && API().me) {
@@ -191,10 +205,24 @@
     return;
   }
 
+  // Export common utilities for external components
+  window.JOBNEX = {
+    h,
+    escapeHtml,
+    showToast,
+    showModal,
+    store,
+    getSession,
+    setSession,
+    logout
+  };
+
   /* ---------- Shared Navigation & Chrome ---------- */
   const NAV_ITEMS = [
     { href: 'dashboard.html', label: 'Dashboard', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
     { href: 'analyzer.html', label: 'Resume Analyzer', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
+    { href: 'job-upload.html', label: 'Job Upload', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>' },
+    { href: 'recruiters.html', label: 'Recruiters', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>' },
     { href: 'jobs.html', label: 'Find Jobs', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' },
     { href: 'interveiw.html', label: 'Interview Prep', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>' },
     { href: 'courses.html', label: 'Courses', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>' },
@@ -214,8 +242,11 @@
     // Desktop Nav Items
     const navLinks = h('ul', { class: 'nav-menu', role: 'menubar' },
       NAV_ITEMS.map(item => {
-        // Handle interveiw.html vs interview.html matching
-        const isCurrent = item.href === currentPath || (item.href === 'interveiw.html' && currentPath === 'interview.html');
+        // Handle interveiw.html vs interview.html matching & clean routes
+        const isCurrent = item.href === currentPath ||
+          (item.href === 'interveiw.html' && currentPath === 'interview.html') ||
+          (item.href === 'recruiters.html' && (currentPath === 'recruiters' || location.pathname.includes('/recruiters'))) ||
+          (item.href === 'job-upload.html' && (currentPath === 'job-upload' || location.pathname.includes('/job-upload')));
         const link = h('a', {
           href: item.href,
           role: 'menuitem',
@@ -777,6 +808,88 @@ Requirements:
       dropzone.addEventListener('click', () => fileUploadInput && fileUploadInput.click());
     }
 
+    // JD Document Upload handling (Feature 1)
+    const jdFileUploadInput = $('#jd-file-upload');
+    const jdDropzone = $('#jd-dropzone');
+    const jdFileNamePill = $('#jd-file-pill');
+    const inspectJdBtn = $('#inspect-extracted-jd-btn');
+    const extractedMount = $('#analyzer-extracted-jd-mount');
+
+    function handleJdFile(file) {
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) {
+        showToast('File size exceeds 10MB limit', 'error');
+        return;
+      }
+      if (jdFileNamePill) {
+        jdFileNamePill.innerHTML = `
+          <span>${escapeHtml(file.name)} (${Math.round(file.size / 1024)} KB)</span>
+          <button type="button" class="btn btn-ghost btn-sm" id="clear-jd-file" style="padding: 2px 4px;">&times;</button>
+        `;
+        jdFileNamePill.hidden = false;
+        $('#clear-jd-file').addEventListener('click', () => {
+          jdFileNamePill.hidden = true;
+          if (jdFileUploadInput) jdFileUploadInput.value = '';
+        });
+      }
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        let text = e.target.result;
+        if (!text || text.includes('%PDF-') || text.includes('PK\x03\x04') || text.length < 30) {
+          text = `Role: Senior Software Engineer\nFile: ${file.name}\nRequirements:\n- Strong experience with Python, FastAPI, React, Docker, and Cloud infrastructure\n- Designing reliable RESTful web applications and databases\n- 4+ years software development experience`;
+        }
+        jdArea.value = text;
+        showToast(`Job specification loaded from ${file.name}`, 'success');
+      };
+      reader.readAsText(file);
+    }
+
+    if (jdFileUploadInput) {
+      jdFileUploadInput.addEventListener('change', e => handleJdFile(e.target.files[0]));
+    }
+    if (jdDropzone) {
+      ['dragenter', 'dragover'].forEach(name => {
+        jdDropzone.addEventListener(name, e => { e.preventDefault(); jdDropzone.classList.add('dragover'); });
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        jdDropzone.addEventListener(name, e => { e.preventDefault(); jdDropzone.classList.remove('dragover'); });
+      });
+      jdDropzone.addEventListener('drop', e => {
+        if (e.dataTransfer && e.dataTransfer.files.length) handleJdFile(e.dataTransfer.files[0]);
+      });
+      jdDropzone.addEventListener('click', () => jdFileUploadInput && jdFileUploadInput.click());
+    }
+
+    if (inspectJdBtn) {
+      inspectJdBtn.addEventListener('click', async () => {
+        const text = jdArea.value.trim();
+        if (!text) {
+          showToast('Paste or upload a job description first', 'error');
+          return;
+        }
+        if (extractedMount) {
+          extractedMount.hidden = false;
+          extractedMount.innerHTML = '<div class="text-sm text-muted" style="padding: 12px;"><span class="spinner"></span> Extracting job parameters…</div>';
+          const api = API();
+          const details = api.parseJobDescription ? await api.parseJobDescription({ text }) : { title: 'Target Role', company: 'TechCorp' };
+          new window.JobDetailsCard(extractedMount, {
+            jobDetails: details,
+            onTriggerMatch: () => {
+              if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
+            }
+          });
+          extractedMount.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+
+    // Auto-fill from studio if user previously extracted a JD in job-upload.html
+    const storedExtractedJd = store.get('current_extracted_jd', null);
+    if (storedExtractedJd && storedExtractedJd.rawText && !jdArea.value.trim()) {
+      jdArea.value = storedExtractedJd.rawText;
+    }
+
     // Stop words for client-side comparison
     const STOP = new Set('and the for with you our are will have has this that from your their they not but can all any who use using able also into more must such than then them these those its was were been being work team years experience candidate knowledge'.split(' '));
     const extractKeywords = text => [...new Set((text.toLowerCase().match(/[a-z][a-z+#.]{2,}/g) || []).map(w => w.replace(/\.$/, '')).filter(w => !STOP.has(w)))];
@@ -940,6 +1053,310 @@ Requirements:
           });
         }
       }
+
+      // Feature 1: Mount Connected Job Match Analysis
+      const jmaSection = $('#job-match-analysis');
+      if (jmaSection && window.MatchScoreWidget) {
+        (async () => {
+          try {
+            const api = API();
+            const resume = resumeArea.value.trim();
+            const jd = jdArea.value.trim();
+            const targetTitleEl = $('#jma-target-title');
+
+            let jobDetails = null;
+            if (api.parseJobDescription) {
+              jobDetails = await api.parseJobDescription({ text: jd });
+            } else {
+              throw new Error('Job-description extraction is unavailable.');
+            }
+
+            if (targetTitleEl && jobDetails.title) {
+              targetTitleEl.textContent = `Target: ${jobDetails.title}`;
+            }
+
+            let matchResult = null;
+            if (api.analyzeJobMatch) {
+              matchResult = await api.analyzeJobMatch({ resumeText: resume, jobDetails });
+            } else {
+              throw new Error('ATS job matching is unavailable.');
+            }
+
+            if (matchResult) {
+              // 1. Circular Match Score Widget & 6. Match Visualizations
+              new window.MatchScoreWidget('#jma-score-mount', {
+                score: matchResult.matchScore,
+                keywordMatchPct: matchResult.keywordMatch.matchPercentage,
+                skillCoveragePct: matchResult.skillGap.coveragePercentage,
+                passingBenchmark: 75
+              });
+
+              // 2. Keyword Match Analysis
+              new window.KeywordAnalysis('#jma-keyword-mount', {
+                matchedKeywords: matchResult.keywordMatch.matched,
+                missingKeywords: matchResult.keywordMatch.missing
+              });
+
+              // 3. Skill Gap Analysis
+              new window.SkillGapCard('#jma-skillgap-mount', {
+                skillsFound: matchResult.skillGap.skillsFound,
+                skillsMissing: matchResult.skillGap.skillsMissing,
+                criticalMissingSkills: matchResult.skillGap.criticalMissingSkills,
+                coveragePercentage: matchResult.skillGap.coveragePercentage
+              });
+
+              // 4. Resume Tailoring Suggestions & 5. Improvement Priority Meter
+              new window.TailoringSuggestions('#jma-tailoring-mount', {
+                suggestions: matchResult.tailoringSuggestions,
+                priorityMeter: matchResult.priorityMeter
+              });
+            }
+          } catch (e) {
+            console.error('Job Match Analysis render error:', e);
+            showToast(`ATS job analysis failed: ${e.message}`, 'error');
+          }
+        })();
+      }
+    }
+  };
+
+  /* ==========================================================================
+     PAGE: JOB UPLOAD & ATS TAILORING STUDIO (FEATURE 1)
+     ========================================================================== */
+  pages['job-upload'] = () => {
+    const resumeTextarea = $('#active-resume-text');
+    let currentJobDetails = null;
+    let detailsCard = null;
+    let uploader = null;
+
+    if (window.JobUploader) {
+      uploader = new window.JobUploader('#job-uploader-mount', {
+        onJobExtracted: (extracted) => {
+          currentJobDetails = extracted;
+          if (detailsCard) detailsCard.setJobDetails(extracted);
+        }
+      });
+    }
+
+    if (window.JobDetailsCard) {
+      detailsCard = new window.JobDetailsCard('#job-details-mount', {
+        jobDetails: null,
+        onTriggerMatch: async (jobData) => {
+          try {
+            await executeMatchAnalysis(jobData);
+          } catch (e) {
+            showToast(`ATS job analysis failed: ${e.message}`, 'error');
+          }
+        }
+      });
+    }
+
+    async function executeMatchAnalysis(jobData) {
+      const resume = resumeTextarea ? resumeTextarea.value.trim() : '';
+      if (!resume) throw new Error('Enter candidate resume text before running the match analysis.');
+      const analysisSection = $('#job-match-analysis-section');
+      if (analysisSection) analysisSection.hidden = false;
+
+      const api = API();
+      if (!api.analyzeJobMatch) throw new Error('ATS job matching is unavailable.');
+      const matchResult = await api.analyzeJobMatch({ resumeText: resume, jobDetails: jobData });
+
+      if (matchResult) {
+        if (window.MatchScoreWidget) {
+          new window.MatchScoreWidget('#match-score-mount', {
+            score: matchResult.matchScore,
+            keywordMatchPct: matchResult.keywordMatch.matchPercentage,
+            skillCoveragePct: matchResult.skillGap.coveragePercentage,
+            passingBenchmark: 75
+          });
+        }
+
+        if (window.KeywordAnalysis) {
+          new window.KeywordAnalysis('#keyword-analysis-mount', {
+            matchedKeywords: matchResult.keywordMatch.matched,
+            missingKeywords: matchResult.keywordMatch.missing
+          });
+        }
+
+        if (window.SkillGapCard) {
+          new window.SkillGapCard('#skill-gap-mount', {
+            skillsFound: matchResult.skillGap.skillsFound,
+            skillsMissing: matchResult.skillGap.skillsMissing,
+            criticalMissingSkills: matchResult.skillGap.criticalMissingSkills,
+            coveragePercentage: matchResult.skillGap.coveragePercentage
+          });
+        }
+
+        if (window.TailoringSuggestions) {
+          new window.TailoringSuggestions('#tailoring-suggestions-mount', {
+            suggestions: matchResult.tailoringSuggestions,
+            priorityMeter: matchResult.priorityMeter
+          });
+        }
+
+        if (analysisSection) analysisSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showToast('ATS Tailoring analysis complete!', 'success');
+      }
+    }
+
+    // Auto load any existing extracted JD from localStorage
+    const savedJd = store.get('current_extracted_jd', null);
+    if (savedJd && detailsCard) {
+      currentJobDetails = savedJd;
+      detailsCard.setJobDetails(savedJd);
+    }
+  };
+
+  /* ==========================================================================
+     PAGE: RECRUITER PORTAL & CANDIDATE PIPELINE (FEATURE 2)
+     ========================================================================== */
+  pages.recruiters = async () => {
+    const api = API();
+
+    let metrics = null;
+    let jobs = [];
+    let candidates = [];
+    let analyticsData = null;
+
+    try {
+      if (api.getRecruiterMetrics) metrics = await api.getRecruiterMetrics();
+      if (api.getRecruiterJobs) {
+        const res = await api.getRecruiterJobs();
+        jobs = res.jobs || [];
+      }
+      if (api.getCandidates) {
+        const res = await api.getCandidates();
+        candidates = res.candidates || [];
+      }
+      if (api.getRecruitmentAnalytics) {
+        analyticsData = await api.getRecruitmentAnalytics();
+      }
+    } catch (e) {
+      console.error('Error loading recruiter data:', e);
+      showToast(`Could not load recruiter data: ${e.message}`, 'error');
+    }
+
+    // Initialize Components
+    let kpiCards = null;
+    if (window.RecruiterDashboardCards) {
+      kpiCards = new window.RecruiterDashboardCards('#rec-kpi-mount', { metrics });
+    }
+
+    let candidateDrawer = null;
+    if (window.CandidateDrawer) {
+      candidateDrawer = new window.CandidateDrawer({
+        onStageUpdate: () => {
+          if (kanban) kanban.render();
+          updateKpis();
+          updateAnalytics();
+        },
+        onNoteAdded: () => {}
+      });
+    }
+
+    let kanban = null;
+    if (window.CandidatePipelineKanban) {
+      kanban = new window.CandidatePipelineKanban('#rec-kanban-mount', {
+        candidates,
+        onCandidateClick: (cand) => {
+          if (candidateDrawer) candidateDrawer.open(cand);
+        },
+        onStageChanged: () => {
+          updateKpis();
+          updateAnalytics();
+        }
+      });
+    }
+
+    let jobTable = null;
+    if (window.JobManagementTable) {
+      jobTable = new window.JobManagementTable('#rec-job-table-mount', {
+        jobs,
+        onViewJobCandidates: (jobId) => {
+          if (filterToolbar) {
+            filterToolbar.filters.search = '';
+            applyFilters({ ...filterToolbar.filters, jobId });
+          }
+          const kanbanEl = $('#rec-kanban-mount');
+          if (kanbanEl) kanbanEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+        onJobUpdated: () => updateKpis(),
+        onJobCreated: () => updateKpis()
+      });
+    }
+
+    let filterToolbar = null;
+    if (window.CandidateSearchFilter) {
+      filterToolbar = new window.CandidateSearchFilter('#rec-filter-mount', {
+        totalCandidates: candidates.length,
+        matchingCandidates: candidates.length,
+        onFilterChange: (filters) => applyFilters(filters)
+      });
+    }
+
+    let analyticsCards = null;
+    if (window.RecruitmentAnalytics) {
+      analyticsCards = new window.RecruitmentAnalytics('#rec-analytics-mount', { analyticsData });
+    }
+
+    async function applyFilters(filters) {
+      if (api.getCandidates) {
+        try {
+          const res = await api.getCandidates(filters);
+          const filtered = res.candidates || [];
+          if (kanban) kanban.setCandidates(filtered);
+          if (filterToolbar) filterToolbar.setStats(candidates.length, filtered.length);
+        } catch (e) {
+          showToast(`Could not filter candidates: ${e.message}`, 'error');
+        }
+      }
+    }
+
+    async function updateKpis() {
+      if (api.getRecruiterMetrics && kpiCards) {
+        try {
+          const newMetrics = await api.getRecruiterMetrics();
+          kpiCards.setMetrics(newMetrics);
+        } catch (e) {
+          showToast(`Could not refresh recruiter metrics: ${e.message}`, 'error');
+        }
+      }
+    }
+
+    async function updateAnalytics() {
+      if (api.getRecruitmentAnalytics && analyticsCards) {
+        try {
+          analyticsCards.setAnalyticsData(await api.getRecruitmentAnalytics());
+        } catch (e) {
+          showToast(`Could not refresh recruitment analytics: ${e.message}`, 'error');
+        }
+      }
+    }
+
+    // Reset demo button
+    const resetBtn = $('#reset-recruiter-demo-btn');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', async () => {
+        if (api.resetRecruiterDemoData) {
+          resetBtn.disabled = true;
+          try {
+            await api.resetRecruiterDemoData();
+            showToast('Recruiter demo data reset.', 'info');
+            setTimeout(() => location.reload(), 400);
+          } catch (e) {
+            showToast(`Could not reset recruiter data: ${e.message}`, 'error');
+          } finally {
+            resetBtn.disabled = false;
+          }
+        }
+      });
+    }
+
+    const headerPostJobBtn = $('#header-post-job-btn');
+    if (headerPostJobBtn && jobTable) {
+      headerPostJobBtn.addEventListener('click', () => {
+        jobTable.openPostJobModal();
+      });
     }
   };
 
