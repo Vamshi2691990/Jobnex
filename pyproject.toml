@@ -1,2 +1,11 @@
 [tool.vercel]
 entrypoint = "backend.main:app"
+
+[project]
+name = "jobnex"
+version = "0.1.0"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic"
+]
